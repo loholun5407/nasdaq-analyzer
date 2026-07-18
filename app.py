@@ -21,7 +21,9 @@ import time
 
 app = FastAPI(title="NASDAQ Stock Analyzer", version="1.0")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+import pathlib
+if pathlib.Path("static").exists():
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # ─── METRIC EXPLANATIONS ───
