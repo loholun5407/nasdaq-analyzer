@@ -1272,12 +1272,18 @@ def get_cached_stock(ticker):
         stock_cache[ticker.upper()] = {"data": data, "timestamp": time.time()}
     return data
 
-@app.on_event("startup")
-async def startup_event():
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
     """Start background cache refresh on startup."""
     thread = threading.Thread(target=refresh_cache, daemon=True)
     thread.start()
     print("🚀 Background cache refresh started (every 1 hour)")
+    yield
+
+# Replace app lifespan
+app.router.lifespan_context = lifespan
 
 # ─── FASTAPI ROUTES ───
 
