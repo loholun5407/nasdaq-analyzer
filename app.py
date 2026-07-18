@@ -1295,12 +1295,15 @@ async def startup_event():
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Main page - stock search and list."""
-    all_tickers = get_all_tickers()
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "all_tickers": all_tickers,
-        "metric_explanations": METRIC_EXPLANATIONS
-    })
+    try:
+        all_tickers = get_all_tickers()
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "all_tickers": all_tickers,
+            "metric_explanations": METRIC_EXPLANATIONS
+        })
+    except Exception as e:
+        return HTMLResponse(f"<h1>500 Error</h1><pre>{str(e)}</pre>", status_code=500)
 
 
 @app.get("/api/stock/{ticker}")
