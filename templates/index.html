@@ -219,10 +219,8 @@
             <div class="brand-icon">N</div>
             <div class="brand-text">NASDAQ<span>Analytics</span></div>
         </div>
-        <div class="market-ticker">
-            <span>NASDAQ <span class="up">+0.8%</span></span>
-            <span>S&P 500 <span class="up">+0.4%</span></span>
-            <span>DOW <span class="down">-0.1%</span></span>
+        <div class="market-ticker" id="marketTicker">
+            <span>Loading market data...</span>
         </div>
     </div>
     <div class="topbar-right">
@@ -276,6 +274,23 @@
 </footer>
 
 <script>
+// ─── MARKET TICKER ───
+(async function loadMarketTicker(){
+    try{
+        const r = await fetch('/api/market-overview');
+        const d = await r.json();
+        const order = [['sp500','S&P 500'],['nasdaq','NASDAQ'],['dow','DOW'],['vix','VIX']];
+        const ticker = document.getElementById('marketTicker');
+        ticker.innerHTML = order.map(([k,label])=>{
+            const m = d[k]; if(!m||!m.price) return '';
+            const c = m.change_pct||0;
+            const cls = c>=0?'up':'down';
+            const sign = c>=0?'+':'';
+            return '<span>'+label+' <span class="'+cls+'">'+sign+c.toFixed(2)+'%</span></span>';
+        }).join(' &nbsp;|&nbsp; ');
+    }catch(e){ console.error('Market ticker error:', e); }
+})();
+
 let currentTicker = null, currentData = null;
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 
