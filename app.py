@@ -1589,6 +1589,132 @@ async def stock_news(ticker: str):
         return {"error": str(e)}
 
 
+@app.get("/api/compare")
+async def compare_stocks(tickers: str = ""):
+    """Side-by-side comparison of 2 stocks."""
+    if not tickers:
+        return {"error": "請提供 tickers，例如 ?tickers=AAPL,MSFT"}
+    ticker_list = [t.strip().upper() for t in tickers.split(",")[:2]]
+    if len(ticker_list) < 2:
+        return {"error": "請提供 2 個 tickers，用逗號分隔"}
+    
+    results = []
+    for t in ticker_list:
+        try:
+            data = fetch_stock_data(t)
+            if data:
+                results.append({
+                    "ticker": data["ticker"],
+                    "name": data["name"],
+                    "price": data.get("price"),
+                    "change_pct": data.get("change_pct"),
+                    "market_cap_fmt": data.get("market_cap_fmt"),
+                    "pe_ratio": data.get("pe_ratio"),
+                    "forward_pe": data.get("forward_pe"),
+                    "peg_ratio": data.get("peg_ratio"),
+                    "revenue_growth": data.get("revenue_growth"),
+                    "profit_margin": data.get("profit_margin"),
+                    "roe": data.get("roe"),
+                    "debt_to_equity": data.get("debt_to_equity"),
+                    "dividend_yield": data.get("dividend_yield"),
+                    "beta": data.get("beta"),
+                    "eps_ttm": data.get("eps_ttm"),
+                    "target_mean": data.get("target_mean"),
+                    "rating": data.get("rating"),
+                    "fcf_yield": data.get("fcf_yield"),
+                    "sector": data.get("sector"),
+                })
+        except Exception as e:
+            results.append({"ticker": t, "error": str(e)})
+    
+    return {"comparison": results, "count": len(results)}
+
+# ─── WATCHLIST CATEGORIES ───
+
+STOCK_CATEGORIES = {
+    "ai_semiconductor": {
+        "name": "🤖 AI & 半導體",
+        "tickers": ["NVDA", "AMD", "INTC", "AVGO", "QCOM", "TXN", "MU", "LRCX", "KLAC", "ASML", "MRVL", "TSM", "ARM", "SMCI"]
+    },
+    "cloud_saas": {
+        "name": "☁️ Cloud & SaaS",
+        "tickers": ["MSFT", "CRM", "ADBE", "NOW", "WDAY", "SNOW", "DDOG", "ZS", "MDB", "OKTA", "TWLO", "ZM", "DOCU", "TEAM"]
+    },
+    "ai_applications": {
+        "name": "🧠 AI 應用",
+        "tickers": ["PLTR", "CRWD", "PANW", "FTNT", "NET", "S", "PATH", "AI", "IONQ", "RGTI", "QBTS", "QUBT", "RXRX"]
+    },
+    "big_tech": {
+        "name": "🏗️ 科技巨頭",
+        "tickers": ["AAPL", "GOOGL", "AMZN", "META", "NFLX", "TSLA", "SPOT", "UBER", "ABNB", "DASH", "RDDT", "RBLX"]
+    },
+    "finance": {
+        "name": "🏦 金融科技",
+        "tickers": ["JPM", "BAC", "WFC", "GS", "MS", "BLK", "V", "MA", "AXP", "PYPL", "SOFI", "HOOD", "COIN", "MSTR", "MARA"]
+    },
+    "healthcare": {
+        "name": "🧬 醫療保健",
+        "tickers": ["JNJ", "UNH", "PFE", "ABBV", "MRK", "TMO", "DHR", "LLY", "AMGN", "GILD", "REGN", "VRTX", "ISRG", "TMDX"]
+    },
+    "energy_green": {
+        "name": "⚡ 能源 & 新能源",
+        "tickers": ["XOM", "CVX", "NEE", "SO", "DUK", "RIVN", "TSLA", "ENPH", "FSLR", "PLUG", "FCEL"]
+    },
+    "consumer": {
+        "name": "🛍️ 消費 & 零售",
+        "tickers": ["WMT", "PG", "KO", "PEP", "MCD", "HD", "LOW", "TGT", "NKE", "SBUX", "DIS", "CMCSA", "DKNG"]
+    },
+    "industrial_defense": {
+        "name": "🏭 工業 & 國防",
+        "tickers": ["CAT", "GE", "BA", "RTX", "LMT", "HON", "UPS", "FDX", "SPCX", "RKLB", "ASTS", "HII", "LDOS"]
+    },
+    "crypto": {
+        "name": "₿ 加密貨幣",
+        "tickers": ["BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "ADA-USD", "XRP-USD", "AVAX-USD", "DOT-USD", "LINK-USD", "UNI-USD"]
+    }
+}
+
+@app.get("/api/categories")
+async def get_categories():
+    """Get all watchlist categories."""
+    return {
+        "categories": [
+            {"id": k, "name": v["name"], "count": len(v["tickers"])} 
+            for k, v in STOCK_CATEGORIES.items()
+        ]
+    }
+
+@app.get("/api/watchlist/{category}")
+async def get_category_stocks(category: str):
+    """Get stocks in a specific category."""
+    cat = STOCK_CATEGORIES.get(category)
+    if not cat:
+        return {"error": f"未知分類: {category}", "available": list(STOCK_CATEGORIES.keys())}
+    
+    results = []
+    for t in cat["tickers"]:
+        try:
+            cached = stock_cache.get(t.upper(), {}).get("data")
+            if cached:
+                results.append({
+                    "ticker": t,
+                    "name": cached.get("name", ""),
+                    "price": cached.get("price"),
+                    "change_pct": cached.get("change_pct"),
+                    "pe_ratio": cached.get("pe_ratio"),
+                    "peg_ratio": cached.get("peg_ratio"),
+                    "rating": cached.get("rating"),
+                })
+            else:
+                results.append({"ticker": t, "name": "", "price": None, "rating": 0})
+        except:
+            results.append({"ticker": t, "name": "", "price": None, "rating": 0})
+    
+    results.sort(key=lambda x: x.get("rating", 0) or 0, reverse=True)
+    return {"category": cat["name"], "stocks": results, "count": len(results)}
+
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "cached": len(stock_cache)}

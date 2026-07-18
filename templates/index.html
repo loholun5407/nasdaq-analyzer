@@ -195,6 +195,9 @@
         .app-footer .links { display: flex; gap: 16px; }
         .app-footer .links a { color: var(--text-muted); text-decoration: none; }
         .app-footer .links a:hover { color: var(--navy); }
+#comparePanel table td { font-size: 12px; }
+#comparePanel table tr:hover { background: var(--gold-bg); }
+#compareResult { overflow-x: auto; }
 
         /* ─── RESPONSIVE ─── */
         @media (max-width: 1024px) { .sidebar { display: none; } }
@@ -244,6 +247,17 @@
             <button class="mkt-tab" onclick="switchMarket('DOW')" data-mkt="DOW">DOW</button>
             <button class="mkt-tab" onclick="switchMarket('CRYPTO')" data-mkt="CRYPTO">₿ CRYPTO</button>
         </div>
+        <div class="sidebar-header" style="font-size:9px">Categories</div>
+        <div style="display:flex;flex-wrap:wrap;border-bottom:1px solid var(--border)" id="catTabs">
+            <button class="cat-tab" onclick="loadCategory('ai_semiconductor')">🤖 AI晶片</button>
+            <button class="cat-tab" onclick="loadCategory('cloud_saas')">☁️ Cloud</button>
+            <button class="cat-tab" onclick="loadCategory('ai_applications')">🧠 AI應用</button>
+            <button class="cat-tab" onclick="loadCategory('big_tech')">🏗️ 巨頭</button>
+            <button class="cat-tab" onclick="loadCategory('finance')">🏦 金融</button>
+            <button class="cat-tab" onclick="loadCategory('energy_green')">⚡ 能源</button>
+            <button class="cat-tab" onclick="loadCategory('healthcare')">🧬 醫療</button>
+            <button class="cat-tab" onclick="loadCategory('consumer')">🛍️ 消費</button>
+        </div>
         <div id="sidebarContent" style="min-height:200px">
             <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:11px">Loading rankings...</div>
         </div>
@@ -259,6 +273,17 @@
                 <div class="feat"><div class="icon">📰</div><div class="label">News Intelligence</div><div class="sub">Real-time market news</div></div>
                 <div class="feat"><div class="icon">🔮</div><div class="label">Options Flow</div><div class="sub">Put/Call · Max Pain</div></div>
                 <div class="feat"><div class="icon">💬</div><div class="label">Sentiment</div><div class="sub">Market mood scoring</div></div>
+                <div class="feat" onclick="showCompare()" style="cursor:pointer;border:2px dashed var(--gold);border-radius:10px"><div class="icon">🆚</div><div class="label">Stock Comparison</div><div class="sub">Side-by-side analysis</div></div>
+            </div>
+            <div id="comparePanel" style="display:none;margin-top:20px;background:var(--surface);border-radius:12px;padding:20px">
+                <h3 style="margin-bottom:12px">🆚 Stock Comparison</h3>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input id="cmpTicker1" placeholder="Ticker 1 (e.g. NVDA)" style="flex:1;min-width:120px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+                    <span style="font-weight:700;color:var(--gold)">VS</span>
+                    <input id="cmpTicker2" placeholder="Ticker 2 (e.g. AMD)" style="flex:1;min-width:120px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+                    <button onclick="runCompare()" style="padding:8px 20px;background:var(--navy);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">Compare</button>
+                </div>
+                <div id="compareResult" style="margin-top:16px"></div>
             </div>
         </div>
     </main>
@@ -290,6 +315,83 @@
         }).join(' &nbsp;|&nbsp; ');
     }catch(e){ console.error('Market ticker error:', e); }
 })();
+
+// ─── CATEGORY LOADER ───
+async function loadCategory(catId){
+    try{
+        document.querySelectorAll('.cat-tab').forEach(b=>b.classList.remove('active'));
+        document.querySelector('[onclick="loadCategory(\''+catId+'\')"]')?.classList.add('active');
+        const r = await fetch('/api/watchlist/'+catId);
+        const d = await r.json();
+        const sidebar = document.getElementById('sidebarContent');
+        sidebar.innerHTML = d.stocks.map(s=>{
+            const p = s.price ? '$'+s.price.toFixed(2) : '—';
+            const ch = s.change_pct ? (s.change_pct>=0?'+':'')+s.change_pct.toFixed(1)+'%' : '';
+            const chCls = (s.change_pct||0)>=0?'up':'down';
+            return '<div class="sidebar-item" data-ticker="'+s.ticker+'" onclick="selectTicker(\''+s.ticker+'\')"><div><span class="sym">'+s.ticker+'</span><span style="font-size:10px;color:var(--text-muted)">'+s.name+'</span></div><div style="text-align:right"><div style="font-weight:600;font-size:11px">'+p+'</div><div class="'+chCls+'" style="font-size:10px">'+ch+'</div></div></div>';
+        }).join('');
+        document.querySelectorAll('.mkt-tab').forEach(b=>b.classList.remove('active'));
+    }catch(e){console.error(e);}
+}
+
+// ─── COMPARE TOOL ───
+function showCompare(){
+    const p = document.getElementById('comparePanel');
+    p.style.display = p.style.display==='none'?'block':'none';
+}
+async function runCompare(){
+    const t1 = document.getElementById('cmpTicker1').value.trim().toUpperCase();
+    const t2 = document.getElementById('cmpTicker2').value.trim().toUpperCase();
+    if(!t1||!t2) return alert('Please enter 2 tickers');
+    const res = document.getElementById('compareResult');
+    res.innerHTML = '<div class="loading-state"><div class="loading-ring"></div><p>Comparing '+t1+' vs '+t2+'...</p></div>';
+    try{
+        const r = await fetch('/api/compare?tickers='+t1+','+t2);
+        const d = await r.json();
+        if(!d.comparison||d.comparison.length<2){res.innerHTML='<p style="color:var(--red)">Failed to load comparison</p>';return;}
+        const [a,b] = d.comparison;
+        const metrics = [
+            ['Price','price','$','price'],
+            ['Change %','change_pct','%','change_pct'],
+            ['Market Cap','market_cap_fmt','','str'],
+            ['P/E Ratio','pe_ratio','','num'],
+            ['Forward P/E','forward_pe','','num'],
+            ['PEG Ratio','peg_ratio','','num'],
+            ['Rev Growth','revenue_growth','%','num'],
+            ['Profit Margin','profit_margin','%','num'],
+            ['ROE','roe','%','num'],
+            ['Debt/Equity','debt_to_equity','','num'],
+            ['Dividend %','dividend_yield','%','num'],
+            ['Beta','beta','','num'],
+            ['EPS (TTM)','eps_ttm','','num'],
+            ['Target','target_mean','$','num'],
+            ['Rating','rating','/10','num'],
+            ['FCF Yield','fcf_yield','%','num'],
+        ];
+        const better = (av,bv,inv)=>{
+            if(av===null||av===undefined)return '';
+            if(bv===null||bv===undefined)return '';
+            if(inv) return av<bv?'🏆':'';
+            return av>bv?'🏆':'';
+        };
+        function fmt(v,fmt){
+            if(v===null||v===undefined) return '—';
+            if(fmt==='num') return typeof v==='number'?v.toFixed(2):v;
+            if(fmt==='price') return typeof v==='number'?'$'+v.toFixed(2):v;
+            return v;
+        }
+        let h = '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="background:var(--navy);color:#fff"><th style="padding:8px;text-align:left">Metric</th><th style="padding:8px;text-align:center">'+a.ticker+'</th><th style="padding:8px;text-align:center">'+b.ticker+'</th></tr>';
+        for(const [label,key,suffix,fmt] of metrics){
+            const av = a[key], bv = b[key];
+            const inv = ['debt_to_equity','pe_ratio','forward_pe','peg_ratio'].includes(key);
+            const b1 = better(av,bv,inv);
+            const b2 = b1==='🏆'?'':better(bv,av,inv);
+            h += '<tr style="border-bottom:1px solid var(--border-light)"><td style="padding:6px 8px;font-weight:500">'+label+'</td><td style="padding:6px 8px;text-align:center">'+fmt(av,fmt)+suffix+' '+b1+'</td><td style="padding:6px 8px;text-align:center">'+fmt(bv,fmt)+suffix+' '+b2+'</td></tr>';
+        }
+        h += '</table>';
+        res.innerHTML = h;
+    }catch(e){res.innerHTML='<p style="color:var(--red)">Error: '+e.message+'</p>';}
+}
 
 let currentTicker = null, currentData = null;
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
