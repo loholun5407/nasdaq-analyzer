@@ -6,8 +6,6 @@ Fetches financial data, explains metrics, and rates stocks 1-10.
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from starlette.requests import Request
 import yfinance as yf
 import numpy as np
 import os
@@ -24,8 +22,6 @@ app = FastAPI(title="NASDAQ Stock Analyzer", version="1.0")
 import pathlib
 if pathlib.Path("static").exists():
     app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
 # ─── METRIC EXPLANATIONS ───
 METRIC_EXPLANATIONS = {
     "pe_ratio": {
@@ -1293,17 +1289,11 @@ async def startup_event():
 # ─── FASTAPI ROUTES ───
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    """Main page - stock search and list."""
-    try:
-        all_tickers = get_all_tickers()
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "all_tickers": all_tickers,
-            "metric_explanations": METRIC_EXPLANATIONS
-        })
-    except Exception as e:
-        return HTMLResponse(f"<h1>500 Error</h1><pre>{str(e)}</pre>", status_code=500)
+async def home():
+    """Main page."""
+    import pathlib
+    html_path = pathlib.Path(__file__).parent / "templates" / "index.html"
+    return HTMLResponse(html_path.read_text())
 
 
 @app.get("/api/stock/{ticker}")
