@@ -810,7 +810,6 @@ def get_all_tickers():
         ("MMM", "3M Company", "Industrials", "DOW"),
         ("V", "Visa Inc.", "Financial", "DOW"),
         ("DOW", "Dow Inc.", "Basic Materials", "DOW"),
-        ("WBA", "Walgreens Boots", "Healthcare", "DOW"),
     ]
     
     crypto = [
@@ -1487,6 +1486,107 @@ async def get_full_analysis(ticker: str):
 
     return data
 
+
+
+
+@app.get("/api/earnings")
+async def earnings_calendar():
+    """Get upcoming earnings for tracked stocks."""
+    try:
+        from datetime import datetime as dt
+        all_tickers = []
+        at = get_all_tickers()
+        candidates = at.get("NASDAQ", [])[:30]  # Top 30 NASDAQ stocks
+        results = []
+        for t in candidates:
+            ticker_str = t[0]
+            try:
+                stock = yf.Ticker(ticker_str)
+                info = stock.info
+                earnings_date = None
+                for field in ["earningsTimestamp", "earningsTimestampStart", "mostRecentQuarter"]:
+                    val = info.get(field)
+                    if val:
+                        try:
+                            earnings_date = dt.fromtimestamp(val).strftime("%Y-%m-%d")
+                            break
+                        except:
+                            pass
+                if earnings_date:
+                    results.append({
+                        "ticker": ticker_str,
+                        "name": t[1],
+                        "earnings_date": earnings_date,
+                        "eps_estimate": round(info.get("forwardEps", 0) or 0, 2),
+                        "revenue_estimate": info.get("revenueGrowth")
+                    })
+            except:
+                pass
+        # Sort by date
+        results.sort(key=lambda x: x["earnings_date"], reverse=True)
+        return {"earnings": results[:15], "updated": dt.now().isoformat()}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/market-overview")
+async def market_overview():
+    """Get real-time market snapshot."""
+    try:
+        indices = {
+            "sp500": ("^GSPC", "S&P 500"),
+            "nasdaq": ("^IXIC", "Nasdaq"),
+            "dow": ("^DJI", "Dow"),
+            "vix": ("^VIX", "VIX"),
+            "gold": ("GC=F", "Gold"),
+            "oil": ("CL=F", "Crude Oil"),
+        }
+        result = {}
+        for key, (ticker, name) in indices.items():
+            try:
+                t = yf.Ticker(ticker)
+                info = t.info
+                price = info.get("regularMarketPrice") or info.get("currentPrice")
+                prev = info.get("regularMarketPreviousClose") or info.get("previousClose")
+                change = round(price - prev, 2) if price and prev else 0
+                change_pct = round(change / prev * 100, 2) if prev and prev != 0 else 0
+                result[key] = {
+                    "name": name,
+                    "price": price,
+                    "change": change,
+                    "change_pct": change_pct
+                }
+            except:
+                result[key] = {"name": name, "price": None}
+        # Add 10Y yield
+        try:
+            tnx = yf.Ticker("^TNX")
+            result["yield_10y"] = {"name": "10Y Yield", "price": tnx.info.get("regularMarketPrice")}
+        except:
+            result["yield_10y"] = {"name": "10Y Yield", "price": None}
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/stock/{ticker}/news")
+async def stock_news(ticker: str):
+    """Get recent news for a stock."""
+    try:
+        ticker = ticker.strip().upper()
+        stock = yf.Ticker(ticker)
+        news = stock.news[:10] if stock.news else []
+        results = []
+        for n in news:
+            content_info = n.get("content", {})
+            results.append({
+                "title": content_info.get("title", "N/A"),
+                "publisher": content_info.get("provider", {}).get("displayName", "N/A"),
+                "published": content_info.get("pubDate", ""),
+                "summary": content_info.get("summary", "")[:200],
+                "url": content_info.get("canonicalUrl", {}).get("url", "#")
+            })
+        return {"ticker": ticker, "news": results}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/health")
