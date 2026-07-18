@@ -1242,12 +1242,17 @@ CACHE_TTL = 3600  # 1 hour cache
 
 def refresh_cache():
     """Background task to refresh ALL watchlist stocks periodically."""
-    # First, get all tickers from our watchlist
-    all_tickers_raw = get_all_tickers()
-    all_tickers = []
-    for mkt in ["NASDAQ", "SP500", "DOW", "CRYPTO"]:
-        all_tickers.extend([t[0] for t in all_tickers_raw.get(mkt, [])])
-    all_tickers = list(set(all_tickers))  # deduplicate
+    time.sleep(10)  # Wait for server to fully start first
+    try:
+        all_tickers_raw = get_all_tickers()
+        all_tickers = []
+        for mkt in ["NASDAQ", "SP500", "DOW", "CRYPTO"]:
+            all_tickers.extend([t[0] for t in all_tickers_raw.get(mkt, [])])
+        all_tickers = list(set(all_tickers))
+    except Exception as e:
+        print(f"⚠️  Failed to get ticker list: {e}")
+        all_tickers = ["AAPL", "MSFT", "GOOGL", "NVDA"]  # fallback
+    
     while True:
         try:
             for ticker in all_tickers:
@@ -1255,12 +1260,13 @@ def refresh_cache():
                     data = fetch_stock_data(ticker)
                     if data:
                         stock_cache[ticker] = {"data": data, "timestamp": time.time()}
-                except:
+                except Exception:
                     pass
-            print(f"🔄 Cache refreshed: {len(stock_cache)} stocks at {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+                time.sleep(1)  # Rate limit
+            print(f"🔄 Cache refreshed: {len(stock_cache)} stocks")
         except Exception as e:
-            print(f"Cache refresh error: {e}")
-        time.sleep(3600)  # Refresh every hour
+            print(f"⚠️  Cache refresh error: {e}")
+        time.sleep(3600)
 
 def get_cached_stock(ticker):
     """Get stock from cache if fresh, else fetch new."""
@@ -1272,18 +1278,15 @@ def get_cached_stock(ticker):
         stock_cache[ticker.upper()] = {"data": data, "timestamp": time.time()}
     return data
 
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app):
+@app.on_event("startup")
+async def startup_event():
     """Start background cache refresh on startup."""
-    thread = threading.Thread(target=refresh_cache, daemon=True)
-    thread.start()
-    print("🚀 Background cache refresh started (every 1 hour)")
-    yield
-
-# Replace app lifespan
-app.router.lifespan_context = lifespan
+    try:
+        thread = threading.Thread(target=refresh_cache, daemon=True)
+        thread.start()
+        print("🚀 Background cache refresh started")
+    except Exception as e:
+        print(f"⚠️  Startup warning: {e}")
 
 # ─── FASTAPI ROUTES ───
 
@@ -1490,6 +1493,10 @@ async def get_full_analysis(ticker: str):
     return data
 
 
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "cached": len(stock_cache)}
 
 if __name__ == "__main__":
     import uvicorn
